@@ -164,6 +164,57 @@ def upload_student_profile_photo(
 
 # ---------------- STAFF PROFILE ----------------
 
+@router.get("/staff-profile", response_model=StaffProfileResponse)
+def get_staff_profile(
+    current_user: User = Depends(require_roles("maintenance_staff")),
+    db: Session = Depends(get_db),
+):
+    profile = db.query(StaffProfile).filter(
+        StaffProfile.user_id == current_user.id
+    ).first()
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="Staff profile not found.")
+
+    return build_staff_response(current_user, profile)
+
+
+@router.patch("/staff-profile", response_model=StaffProfileResponse)
+def update_staff_profile(
+    request: StaffProfileUpdate,
+    current_user: User = Depends(require_roles("maintenance_staff")),
+    db: Session = Depends(get_db),
+):
+    profile = db.query(StaffProfile).filter(
+        StaffProfile.user_id == current_user.id
+    ).first()
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="Staff profile not found.")
+
+    updates = request.model_dump(exclude_unset=True)
+
+    if "full_name" in updates and updates["full_name"] is not None:
+        cleaned_name = updates["full_name"].strip()
+
+        if len(cleaned_name) < 2:
+            raise HTTPException(
+                status_code=422,
+                detail="Full name must contain at least 2 characters.",
+            )
+
+        current_user.full_name = cleaned_name
+
+    if "bio" in updates:
+        profile.bio = updates["bio"].strip() if updates["bio"] else None
+
+    db.commit()
+    db.refresh(current_user)
+    db.refresh(profile)
+
+    return build_staff_response(current_user, profile)
+
+
 @router.post("/staff-profile/photo", response_model=StaffProfileResponse)
 def upload_staff_profile_photo(
     photo: UploadFile = File(...),
